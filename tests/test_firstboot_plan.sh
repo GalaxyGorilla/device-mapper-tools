@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-# Basic output-level test to ensure sealed mode requires mount cmd.
+# Basic output-level test to ensure initramfs script can run in sealed mode without explicit mount cmd.
 
 TD=$(mktemp -d)
 trap 'rm -rf "$TD"' EXIT
@@ -17,6 +17,6 @@ CRYPT_IV_OFFSET=0
 EOF
 
 # sealed mode without mount cmd should NOT fail (it uses default mount cmd).
-DMTOOLS_PHASE=sealed MODE=dry-run DATA_DEV=/dev/xxx CRYPT_KEY_HEX=00 ./firstboot/apply_manifest.sh "$TD/manifest.env" >/dev/null 2>&1
+DMTOOLS_PHASE=sealed MODE=dry-run DATA_DEV=/dev/xxx CRYPT_KEY_HEX=00 ./initramfs/apply_manifest.sh "$TD/manifest.env" >/dev/null 2>&1
 
 echo OK

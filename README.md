@@ -45,14 +45,14 @@ tools/compose/make_manifest_env.sh out/manifest.json out/manifest.env
 
 On the embedded target you typically have real block devices (no loop), and you must provide key material from a device-specific source.
 
-`firstboot/apply_manifest.sh` is **POSIX `/bin/sh`** and is designed to run in an **initramfs**.
+`initramfs/apply_manifest.sh` is **POSIX `/bin/sh`** and is designed to run in an **initramfs**.
 
 Bootstrap (default) will activate the stack and (optionally) run a mount command.
 
 Dry-run (prints a plan):
 
 ```sh
-MODE=dry-run firstboot/apply_manifest.sh out/manifest.env
+MODE=dry-run initramfs/apply_manifest.sh out/manifest.env
 ```
 
 Apply (actually runs `dmsetup` + `keyctl`):
@@ -65,7 +65,7 @@ export CRYPT_KEY_HEX=<hex-key>                 # or CRYPT_KEY_BIN=/path/key.bin
 # Optional: try mounting root
 export DMTOOLS_MOUNT_CMD='mount -t ext4 /dev/mapper/crypt /newroot'
 
-MODE=apply firstboot/apply_manifest.sh out/manifest.env
+MODE=apply initramfs/apply_manifest.sh out/manifest.env
 ```
 
 ### Step 3 (target initramfs, sealed): fail closed
@@ -85,7 +85,7 @@ export DMTOOLS_MOUNT_OPTS='ro,errors=panic'
 # Optional: what to do if mount fails (default: panic)
 export DMTOOLS_FAIL_ACTION=panic   # panic | reboot | shell | exit
 
-MODE=apply firstboot/apply_manifest.sh out/manifest.env
+MODE=apply initramfs/apply_manifest.sh out/manifest.env
 ```
 
 ---
@@ -114,7 +114,7 @@ And “profiles” that describe *what kind of crypt you want*:
 The manifest is the contract between CI and the target.
 
 - **`manifest.json`** is the canonical format (see `spec/manifest.schema.json`).
-- **`manifest.env`** is a minimal, initramfs-friendly derivative used by the shell firstboot script.
+- **`manifest.env`** is a minimal, initramfs-friendly derivative used by the shell initramfs script.
 
 The manifest records:
 
@@ -158,9 +158,9 @@ Encrypt/decrypt a raw image using dm-crypt compatible settings (AES-CBC, IV=plai
 - `tools/compose/make_manifest.py` (lower-level manifest generator)
 - `tools/compose/make_manifest_env.sh` (JSON → ENV for initramfs)
 
-### First boot (initramfs)
+### Initramfs activation
 
-`firstboot/apply_manifest.sh`
+`initramfs/apply_manifest.sh`
 
 - POSIX shell
 - prefers `dmsetup + keyctl`
