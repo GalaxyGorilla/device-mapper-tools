@@ -83,14 +83,6 @@ If mounting fails, the initramfs takes a fatal action (default: panic).
 export DMTOOLS_PHASE=sealed
 # Optional: override mount behavior
 # export DMTOOLS_MOUNT_CMD='mount -t ext4 -o ro,errors=panic /dev/mapper/crypt /newroot'
-# Or use defaults (also can be embedded into manifest.json):
-export DMTOOLS_NEWROOT=/newroot
-export DMTOOLS_MOUNT_FSTYPE=ext4
-# If unset, sealed mode defaults to:
-# - ext4: ro,errors=panic
-# - others: ro
-# You can override explicitly:
-# export DMTOOLS_MOUNT_OPTS='ro,errors=panic'
 
 # Optional: what to do if mount fails (default: panic)
 export DMTOOLS_FAIL_ACTION=panic   # panic | reboot | shell | exit
