@@ -51,9 +51,9 @@ def main() -> int:
     ap.add_argument("--crypt-header", help="Path to dm-crypt header artifact (optional)")
 
     ap.add_argument(
-        "--direction",
+        "--stack",
         required=True,
-        choices=["integrity-then-crypt", "crypt-then-integrity"],
+        choices=["integrity-then-crypt", "crypt-then-integrity", "integrity-only", "crypt-only"],
         help="Stack order from bottom to top",
     )
 
@@ -63,6 +63,12 @@ def main() -> int:
     ap.add_argument("--integrity-mode", choices=["J", "B", "D", "R"], default="J")
     ap.add_argument("--integrity-buffer-sectors", type=int, default=128)
     ap.add_argument("--integrity-compat", choices=["v1"], default="v1")
+
+    # dm-crypt parameters (offline encryption tool / firstboot activation)
+    ap.add_argument("--crypt-cipher", default="capi:cbc(aes)-plain", help="dm-crypt cipher spec (table field)")
+    ap.add_argument("--crypt-key-bytes", type=int, default=32, help="Key length in bytes (dmsetup crypt field)")
+    ap.add_argument("--crypt-sector-size", type=int, default=512)
+    ap.add_argument("--crypt-iv-offset", type=int, default=0)
 
     ap.add_argument("--out", default="manifest.json")
 
@@ -86,35 +92,48 @@ def main() -> int:
             "buffer_sectors": args.integrity_buffer_sectors,
         }
 
+    crypt = None
+    if args.crypt_header:
+        crypt = {
+            "cipher": args.crypt_cipher,
+            "key_bytes": args.crypt_key_bytes,
+            "sector_size": args.crypt_sector_size,
+            "iv_offset": args.crypt_iv_offset,
+        }
+
     # Describe stack bottom-to-top.
     stack = [{"type": "raw", "name": "data", "params": {"image": "images.data"}}]
 
-    if args.direction == "integrity-then-crypt":
-        if args.integrity_meta:
-            stack.append(
-                {
-                    "type": "dm-integrity",
-                    "name": "integrity",
-                    "params": {
-                        "meta": "images.integrity_meta",
-                        "integrity": "integrity",
-                    },
-                }
-            )
-        stack.append({"type": "dm-crypt", "name": "crypt", "params": {"header": "images.crypt_header"}})
-    else:
-        stack.append({"type": "dm-crypt", "name": "crypt", "params": {"header": "images.crypt_header"}})
-        if args.integrity_meta:
-            stack.append(
-                {
-                    "type": "dm-integrity",
-                    "name": "integrity",
-                    "params": {
-                        "meta": "images.integrity_meta",
-                        "integrity": "integrity",
-                    },
-                }
-            )
+    def push_integrity() -> None:
+        if not args.integrity_meta:
+            raise SystemExit("--integrity-meta is required for stacks that include dm-integrity")
+        stack.append(
+            {
+                "type": "dm-integrity",
+                "name": "integrity",
+                "params": {
+                    "meta": "images.integrity_meta",
+                    "integrity": "integrity",
+                },
+            }
+        )
+
+    def push_crypt() -> None:
+        if not args.crypt_header:
+            # crypt tool might be configured to use a raw key source on firstboot, but for now require header artifact
+            raise SystemExit("--crypt-header is required for stacks that include dm-crypt")
+        stack.append({"type": "dm-crypt", "name": "crypt", "params": {"crypt": "crypt", "header": "images.crypt_header"}})
+
+    if args.stack == "integrity-then-crypt":
+        push_integrity()
+        push_crypt()
+    elif args.stack == "crypt-then-integrity":
+        push_crypt()
+        push_integrity()
+    elif args.stack == "integrity-only":
+        push_integrity()
+    elif args.stack == "crypt-only":
+        push_crypt()
 
     manifest: Dict[str, Any] = {
         "manifest_version": 1,
@@ -128,6 +147,8 @@ def main() -> int:
     }
     if integrity is not None:
         manifest["integrity"] = integrity
+    if crypt is not None:
+        manifest["crypt"] = crypt
 
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, sort_keys=True)

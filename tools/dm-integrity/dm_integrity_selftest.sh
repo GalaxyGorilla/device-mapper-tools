@@ -28,7 +28,7 @@ echo "[+] Creating images in $WORKDIR"
 truncate -s "${DATA_MB}M" "$DATA_IMG"
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-python3 "$SCRIPT_DIR/dm_integrity_offline_format.py" \
+python3 "$SCRIPT_DIR/dm_integrity_format.py" \
   --data-image "$DATA_IMG" \
   --meta-image "$META_IMG" \
   --tag-size "$TAG_SIZE" \

@@ -35,6 +35,17 @@
       },
       "additionalProperties": true
     },
+    "crypt": {
+      "type": "object",
+      "description": "dm-crypt parameters for first-boot activation",
+      "properties": {
+        "cipher": {"type": "string"},
+        "key_bytes": {"type": "integer", "minimum": 1},
+        "sector_size": {"type": "integer", "minimum": 1},
+        "iv_offset": {"type": "integer"}
+      },
+      "additionalProperties": true
+    },
     "stack": {
       "type": "array",
       "description": "Bottom-to-top stack of device-mapper layers",

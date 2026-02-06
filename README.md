@@ -11,13 +11,13 @@ To connect these two worlds we use a small JSON **manifest** (see `spec/manifest
 
 ## dm-integrity offline formatter (unprivileged)
 
-`tools/dm-integrity/dm_integrity_offline_format.py` formats a **dm-integrity meta_device** image file offline, without needing `CAP_SYS_ADMIN` (no dmsetup/loop/devmapper ioctls). This is useful for CI pipelines that can create artifacts unprivileged, and only activate dm-integrity in a privileged stage.
+`tools/dm-integrity/dm_integrity_format.py` formats a **dm-integrity meta_device** image file offline, without needing `CAP_SYS_ADMIN` (no dmsetup/loop/devmapper ioctls). This is useful for CI pipelines that can create artifacts unprivileged, and only activate dm-integrity in a privileged stage.
 
 ### Quick start
 
 ```bash
 truncate -s 64M data.img
-python3 tools/dm-integrity/dm_integrity_offline_format.py \
+python3 tools/dm-integrity/dm_integrity_format.py \
   --data-image data.img \
   --meta-image integrity.meta.img
 ```
@@ -30,7 +30,7 @@ python3 tools/dm-integrity/dm_integrity_offline_format.py \
 
 ## dm-crypt (offline, unprivileged)
 
-`tools/dm-crypt/dmcrypt_plain_cbc.py` encrypts/decrypts a raw image using dm-crypt compatible settings (AES-CBC, IV=plain). This is a building block for unprivileged CI pipelines.
+`tools/dm-crypt/dm_crypt_plain_cbc.py` encrypts/decrypts a raw image using dm-crypt compatible settings (AES-CBC, IV=plain). This is a building block for unprivileged CI pipelines.
 
 (Your first-boot activation will still need kernel dm-crypt + key handling.)
 
@@ -42,7 +42,8 @@ Create a manifest describing the artifacts + intended stack:
 python3 tools/compose/make_manifest.py \
   --data data.img \
   --integrity-meta integrity.meta.img \
-  --direction integrity-then-crypt \
+  --crypt-header crypt.header.img \
+  --stack integrity-then-crypt \
   --out manifest.json
 ```
 
