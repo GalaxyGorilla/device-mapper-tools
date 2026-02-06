@@ -1,0 +1,9 @@
+[project]
+name = "device-mapper-tools"
+version = "0.0.0"
+description = "CI-friendly offline tooling for Linux device-mapper stacks"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

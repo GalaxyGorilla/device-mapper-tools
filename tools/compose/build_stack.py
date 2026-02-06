@@ -29,11 +29,15 @@ import shutil
 import subprocess
 from pathlib import Path
 
+# (dm-verity builder invoked via subprocess; no import needed)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DMINT_FMT = REPO_ROOT / "tools" / "dm-integrity" / "dm_integrity_format.py"
 DMCRYPT_CBC = REPO_ROOT / "tools" / "dm-crypt" / "dm_crypt_plain_cbc.py"
 MAKE_MANIFEST = REPO_ROOT / "tools" / "compose" / "make_manifest.py"
+
+# dm-verity builder is imported (pure python)
 
 
 def run(cmd: list[str]) -> None:
@@ -52,7 +56,15 @@ def main() -> int:
     ap.add_argument(
         "--stack",
         required=True,
-        choices=["integrity-then-crypt", "crypt-then-integrity", "integrity-only", "crypt-only"],
+        choices=[
+            "integrity-then-crypt",
+            "crypt-then-integrity",
+            "integrity-only",
+            "crypt-only",
+            "verity-only",
+            "verity-then-crypt",
+            "crypt-then-verity",
+        ],
         help="Stack order from bottom to top",
     )
     ap.add_argument(
@@ -72,6 +84,12 @@ def main() -> int:
     ap.add_argument("--crypt-sector-size", type=int, default=512)
     ap.add_argument("--crypt-iv-offset", type=int, default=0)
     ap.add_argument("--crypt-start-sector", type=int, default=0)
+
+    # dm-verity knobs
+    ap.add_argument("--verity-hash-alg", default="sha256")
+    ap.add_argument("--verity-data-block-size", type=int, default=4096)
+    ap.add_argument("--verity-hash-block-size", type=int, default=4096)
+    ap.add_argument("--verity-salt-hex", default="")
 
     k = ap.add_mutually_exclusive_group()
     k.add_argument("--key-hex", help="AES key as hex (passed to dm_crypt_plain_cbc.py)")
@@ -96,6 +114,8 @@ def main() -> int:
 
     integrity_meta = None
     crypt_header = None
+    verity_hash = None
+    verity_root_hash_hex = None
 
     # Decide what becomes the bottom "data" image in the manifest.
     # For plain-crypt, bottom is encrypted backing image.
@@ -137,6 +157,36 @@ def main() -> int:
             "--compat", "v1",
         ])
 
+    # If stack includes dm-verity, build hash tree artifact.
+    if "verity" in args.stack:
+        verity_hash = outdir / "verity.hash.img"
+        cmd = [
+            "python3",
+            str(REPO_ROOT / "tools" / "dm_verity" / "dm_verity_build.py"),
+            "--data-image",
+            str(data_img),
+            "--hash-image",
+            str(verity_hash),
+            "--hash",
+            args.verity_hash_alg,
+            "--data-block-size",
+            str(args.verity_data_block_size),
+            "--hash-block-size",
+            str(args.verity_hash_block_size),
+            "--salt-hex",
+            args.verity_salt_hex,
+            "--print",
+        ]
+        out = subprocess.check_output(cmd, text=True)
+        # Parse root_hash=... and salt=...
+        root = None
+        for line in out.splitlines():
+            if line.startswith("root_hash="):
+                root = line.split("=", 1)[1].strip()
+        if not root:
+            raise SystemExit("dm-verity builder did not print root_hash")
+        verity_root_hash_hex = root
+
     # Build manifest.
     manifest_path = outdir / args.manifest
 
@@ -169,6 +219,15 @@ def main() -> int:
             "--integrity-block-size", str(args.integrity_block_size),
             "--integrity-mode", args.integrity_mode,
             "--integrity-buffer-sectors", str(args.integrity_buffer_sectors),
+        ]
+    if verity_hash is not None:
+        make_cmd += [
+            "--verity-hash", str(verity_hash),
+            "--verity-hash-alg", args.verity_hash_alg,
+            "--verity-data-block-size", str(args.verity_data_block_size),
+            "--verity-hash-block-size", str(args.verity_hash_block_size),
+            "--verity-salt-hex", args.verity_salt_hex,
+            "--verity-root-hash-hex", str(verity_root_hash_hex),
         ]
     if crypt_header is not None:
         make_cmd += [

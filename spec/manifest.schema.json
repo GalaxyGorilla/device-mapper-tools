@@ -19,7 +19,8 @@
       "properties": {
         "data": {"$ref": "#/$defs/image"},
         "integrity_meta": {"$ref": "#/$defs/image"},
-        "crypt_header": {"$ref": "#/$defs/image"}
+        "crypt_header": {"$ref": "#/$defs/image"},
+        "verity_hash": {"$ref": "#/$defs/image"}
       },
       "additionalProperties": true
     },
@@ -54,6 +55,18 @@
       },
       "additionalProperties": true
     },
+    "verity": {
+      "type": "object",
+      "description": "dm-verity parameters and root hash for activation",
+      "properties": {
+        "hash_alg": {"type": "string"},
+        "data_block_size": {"type": "integer", "minimum": 1},
+        "hash_block_size": {"type": "integer", "minimum": 1},
+        "salt_hex": {"type": "string"},
+        "root_hash_hex": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
     "stack": {
       "type": "array",
       "description": "Bottom-to-top stack of device-mapper layers",
@@ -64,7 +77,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["raw", "dm-integrity", "dm-crypt"]
+            "enum": ["raw", "dm-integrity", "dm-crypt", "dm-verity"]
           },
           "name": {"type": "string"},
           "params": {"type": "object", "additionalProperties": true}

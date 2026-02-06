@@ -49,11 +49,20 @@ def main() -> int:
     ap.add_argument("--data", required=True, help="Path to data image (or partition image)")
     ap.add_argument("--integrity-meta", help="Path to dm-integrity meta_device image")
     ap.add_argument("--crypt-header", help="Path to dm-crypt header artifact (optional)")
+    ap.add_argument("--verity-hash", help="Path to dm-verity hash tree artifact (optional)")
 
     ap.add_argument(
         "--stack",
         required=True,
-        choices=["integrity-then-crypt", "crypt-then-integrity", "integrity-only", "crypt-only"],
+        choices=[
+            "integrity-then-crypt",
+            "crypt-then-integrity",
+            "integrity-only",
+            "crypt-only",
+            "verity-only",
+            "verity-then-crypt",
+            "crypt-then-verity",
+        ],
         help="Stack order from bottom to top",
     )
 
@@ -72,6 +81,13 @@ def main() -> int:
     ap.add_argument("--crypt-iv-offset", type=int, default=0)
     ap.add_argument("--crypt-aead-tag-size", type=int, default=16, help="AEAD tag size in bytes (common default: 16)")
 
+    # dm-verity parameters
+    ap.add_argument("--verity-hash-alg", default="sha256")
+    ap.add_argument("--verity-data-block-size", type=int, default=4096)
+    ap.add_argument("--verity-hash-block-size", type=int, default=4096)
+    ap.add_argument("--verity-salt-hex", default="")
+    ap.add_argument("--verity-root-hash-hex", default="")
+
     ap.add_argument("--out", default="manifest.json")
 
     args = ap.parse_args()
@@ -83,6 +99,8 @@ def main() -> int:
         images["integrity_meta"] = image_entry(args.integrity_meta)
     if args.crypt_header:
         images["crypt_header"] = image_entry(args.crypt_header)
+    if args.verity_hash:
+        images["verity_hash"] = image_entry(args.verity_hash)
 
     integrity = None
     if args.integrity_meta:
@@ -129,16 +147,25 @@ def main() -> int:
             raise SystemExit("--crypt-header is required for stacks that include dm-crypt")
         stack.append({"type": "dm-crypt", "name": "crypt", "params": {"crypt": "crypt", "header": "images.crypt_header"}})
 
+    def push_verity() -> None:
+        if not args.verity_hash:
+            raise SystemExit("--verity-hash is required for stacks that include dm-verity")
+        stack.append({"type": "dm-verity", "name": "verity", "params": {"hash": "images.verity_hash", "verity": "verity"}})
+
     if args.stack == "integrity-then-crypt":
-        push_integrity()
-        push_crypt()
+        push_integrity(); push_crypt()
     elif args.stack == "crypt-then-integrity":
-        push_crypt()
-        push_integrity()
+        push_crypt(); push_integrity()
     elif args.stack == "integrity-only":
         push_integrity()
     elif args.stack == "crypt-only":
         push_crypt()
+    elif args.stack == "verity-only":
+        push_verity()
+    elif args.stack == "verity-then-crypt":
+        push_verity(); push_crypt()
+    elif args.stack == "crypt-then-verity":
+        push_crypt(); push_verity()
 
     manifest: Dict[str, Any] = {
         "manifest_version": 1,
@@ -154,6 +181,17 @@ def main() -> int:
         manifest["integrity"] = integrity
     if crypt is not None:
         manifest["crypt"] = crypt
+
+    if args.verity_hash:
+        if not args.verity_root_hash_hex:
+            raise SystemExit("--verity-root-hash-hex is required when --verity-hash is provided")
+        manifest["verity"] = {
+            "hash_alg": args.verity_hash_alg,
+            "data_block_size": args.verity_data_block_size,
+            "hash_block_size": args.verity_hash_block_size,
+            "salt_hex": args.verity_salt_hex,
+            "root_hash_hex": args.verity_root_hash_hex,
+        }
 
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, sort_keys=True)

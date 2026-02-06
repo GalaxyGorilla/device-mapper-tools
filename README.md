@@ -1,6 +1,6 @@
 # device-mapper-tools
 
-Utilities for building **device-mapper based storage images** (dm-crypt, dm-integrity, and later dm-verity) in environments where you **cannot** use privileged kernel interfaces (typical CI/CD runners).
+Utilities for building **device-mapper based storage images** (dm-crypt, dm-integrity, dm-verity) in environments where you **cannot** use privileged kernel interfaces (typical CI/CD runners).
 
 The guiding idea is a two-step workflow:
 
@@ -72,6 +72,9 @@ This repo intentionally exposes a small set of “common” stack shapes:
 - `integrity-only` (dm-integrity standalone)
 - `integrity-then-crypt`
 - `crypt-then-integrity`
+- `verity-only` (dm-verity hash tree + root hash)
+- `verity-then-crypt`
+- `crypt-then-verity`
 
 And “profiles” that describe *what kind of crypt you want*:
 
@@ -91,9 +94,17 @@ The manifest records:
 
 - paths + sizes + sha256 of the produced artifacts
 - the stack ordering (bottom → top)
-- parameters needed for activation (e.g. dm-integrity tag size, dm-crypt cipher/sector size, etc.)
+- parameters needed for activation (e.g. dm-integrity tag size, dm-crypt cipher/sector size, dm-verity root hash, etc.)
 
 ---
+
+## Tests
+
+Run the (unprivileged) test suite:
+
+```sh
+./tests/run_tests.sh
+```
 
 ## Tools
 
