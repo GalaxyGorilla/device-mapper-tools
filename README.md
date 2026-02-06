@@ -2,7 +2,13 @@
 
 Utilities for building **device-mapper based storage images** (dm-crypt, dm-integrity, dm-verity) in environments where you **cannot** use privileged kernel interfaces (typical CI/CD runners).
 
-The guiding idea is a three-step workflow:
+## What this project enables (practical view)
+
+1. A CI/CD pipeline generates one or more **partition images** containing the desired content.
+2. This project can apply **dm-* stacks offline** by producing derived artifacts (e.g. encrypted images, integrity metadata, verity hash trees) and a **manifest** describing how to activate them.
+3. On the embedded target, an **initramfs script** consumes the manifest plus **environment variables** (device paths, key sources, policy) to activate `/dev/mapper/*` devices using `dmsetup` + `keyctl`.
+
+The guiding idea (lifecycle/policy) is a three-step workflow:
 
 1. **CI/CD (unprivileged):** do everything that is *pure file I/O* (create images, encrypt files, format dm-integrity metadata, compute hashes, …).
 2. **Bootstrap boot (privileged, on the embedded target):** first activation while the system is still “allowed to settle”. You activate the stack and bring the system into a known-good state.
