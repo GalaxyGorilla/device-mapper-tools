@@ -1,6 +1,13 @@
 # device-mapper-tools
 
-Small utilities related to Linux device-mapper.
+Small utilities related to Linux device-mapper, designed for **unprivileged CI/CD** workflows.
+
+The overall model is:
+
+1. **CI/CD (unprivileged):** create/format image artifacts as pure file operations.
+2. **First boot (privileged, on target):** perform the minimum required activation steps (dmsetup, key retrieval, etc.).
+
+To connect these two worlds we use a small JSON **manifest** (see `spec/manifest.schema.json`).
 
 ## dm-integrity offline formatter (unprivileged)
 
@@ -20,4 +27,18 @@ python3 tools/dm-integrity/dm_integrity_offline_format.py \
 ```bash
 ./tools/dm-integrity/dm_integrity_selftest.sh 64
 ```
+
+## Manifest (CI artifact)
+
+Create a manifest describing the artifacts + intended stack:
+
+```bash
+python3 tools/compose/make_manifest.py \
+  --data data.img \
+  --integrity-meta integrity.meta.img \
+  --direction integrity-then-crypt \
+  --out manifest.json
+```
+
+On the embedded device, `firstboot/apply_manifest.sh` currently prints the intended actions (dry run). Later we can extend it to actually activate dm targets.
 
