@@ -34,6 +34,36 @@ python3 tools/dm-integrity/dm_integrity_format.py \
 
 (Your first-boot activation will still need kernel dm-crypt + key handling.)
 
+## Compose (CI-friendly)
+
+`tools/compose/build_stack.py` builds common artifact sets in an unprivileged CI job and emits a `manifest.json` you can carry to the device.
+
+Examples:
+
+Plain dm-crypt (offline encryption), crypt-only stack:
+
+```bash
+truncate -s 64M fs.img
+python3 tools/compose/build_stack.py \
+  --in fs.img \
+  --outdir out_plain \
+  --stack crypt-only \
+  --profile plain-crypt \
+  --key-hex 000102...  # provide your own key handling in CI
+```
+
+AEAD intent (dm-crypt authenticated mode + dm-integrity tags):
+
+```bash
+truncate -s 64M fs.img
+python3 tools/compose/build_stack.py \
+  --in fs.img \
+  --outdir out_aead \
+  --stack integrity-then-crypt \
+  --profile aead \
+  --integrity-tag-size 16
+```
+
 ## Manifest (CI artifact)
 
 Create a manifest describing the artifacts + intended stack:
@@ -44,8 +74,11 @@ python3 tools/compose/make_manifest.py \
   --integrity-meta integrity.meta.img \
   --crypt-header crypt.header.img \
   --stack integrity-then-crypt \
+  --crypt-mode plain \
   --out manifest.json
 ```
+
+For AEAD intent (dm-crypt authenticated mode + dm-integrity tags), set `--crypt-mode aead` and record the intended tag size.
 
 On the embedded device, `firstboot/apply_manifest.sh` currently prints the intended actions (dry run). Later we can extend it to actually activate dm targets.
 

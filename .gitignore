@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# demo / build artifacts
+out/
+*.img
+*.bin
+manifest.json
+
+# editor
+.vscode/
+.idea/
+.DS_Store

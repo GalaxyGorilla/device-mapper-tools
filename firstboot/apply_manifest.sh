@@ -56,7 +56,12 @@ jq -c '.stack[]' "$MANIFEST" | while read -r layer; do
     jq -r '.integrity // {} | "      integrity: tag_size=\(.tag_size//"?") block_size=\(.block_size//"?") mode=\(.mode//"?") buffer_sectors=\(.buffer_sectors//"?")"' "$MANIFEST"
   fi
   if [[ "$t" == "dm-crypt" ]]; then
-    jq -r '.crypt // {} | "      crypt: cipher=\(.cipher//"?") key_bytes=\(.key_bytes//"?") sector_size=\(.sector_size//"?") iv_offset=\(.iv_offset//"?")"' "$MANIFEST"
+    mode=$(jq -r '.crypt.mode // "?"' "$MANIFEST")
+    jq -r '.crypt // {} | "      crypt: mode=\(.mode//"?") cipher=\(.cipher//"?") key_bytes=\(.key_bytes//"?") sector_size=\(.sector_size//"?") iv_offset=\(.iv_offset//"?")"' "$MANIFEST"
+    if [[ "$mode" == "aead" ]]; then
+      jq -r '.crypt.aead // {} | "      aead: tag_size=\(.tag_size//"?")"' "$MANIFEST"
+      echo "      hint: prefer cryptsetup on target to activate AEAD+integrity correctly"
+    fi
   fi
   idx=$((idx+1))
 done

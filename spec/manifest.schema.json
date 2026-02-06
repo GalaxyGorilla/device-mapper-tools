@@ -39,10 +39,18 @@
       "type": "object",
       "description": "dm-crypt parameters for first-boot activation",
       "properties": {
+        "mode": {"type": "string", "enum": ["plain", "aead"]},
         "cipher": {"type": "string"},
         "key_bytes": {"type": "integer", "minimum": 1},
         "sector_size": {"type": "integer", "minimum": 1},
-        "iv_offset": {"type": "integer"}
+        "iv_offset": {"type": "integer"},
+        "aead": {
+          "type": "object",
+          "properties": {
+            "tag_size": {"type": "integer", "minimum": 1}
+          },
+          "additionalProperties": true
+        }
       },
       "additionalProperties": true
     },

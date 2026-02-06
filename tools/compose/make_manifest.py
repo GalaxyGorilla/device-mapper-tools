@@ -64,11 +64,13 @@ def main() -> int:
     ap.add_argument("--integrity-buffer-sectors", type=int, default=128)
     ap.add_argument("--integrity-compat", choices=["v1"], default="v1")
 
-    # dm-crypt parameters (offline encryption tool / firstboot activation)
-    ap.add_argument("--crypt-cipher", default="capi:cbc(aes)-plain", help="dm-crypt cipher spec (table field)")
+    # dm-crypt parameters (firstboot activation)
+    ap.add_argument("--crypt-mode", choices=["plain", "aead"], default="plain")
+    ap.add_argument("--crypt-cipher", default="capi:cbc(aes)-plain", help="dm-crypt cipher spec (dmsetup table field, when used)")
     ap.add_argument("--crypt-key-bytes", type=int, default=32, help="Key length in bytes (dmsetup crypt field)")
     ap.add_argument("--crypt-sector-size", type=int, default=512)
     ap.add_argument("--crypt-iv-offset", type=int, default=0)
+    ap.add_argument("--crypt-aead-tag-size", type=int, default=16, help="AEAD tag size in bytes (common default: 16)")
 
     ap.add_argument("--out", default="manifest.json")
 
@@ -95,11 +97,14 @@ def main() -> int:
     crypt = None
     if args.crypt_header:
         crypt = {
+            "mode": args.crypt_mode,
             "cipher": args.crypt_cipher,
             "key_bytes": args.crypt_key_bytes,
             "sector_size": args.crypt_sector_size,
             "iv_offset": args.crypt_iv_offset,
         }
+        if args.crypt_mode == "aead":
+            crypt["aead"] = {"tag_size": args.crypt_aead_tag_size}
 
     # Describe stack bottom-to-top.
     stack = [{"type": "raw", "name": "data", "params": {"image": "images.data"}}]
