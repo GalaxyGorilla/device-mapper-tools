@@ -16,6 +16,9 @@
 set -eu
 
 MODE=${MODE:-dry-run}
+PHASE=${DMTOOLS_PHASE:-bootstrap}   # bootstrap | sealed
+FAIL_ACTION=${DMTOOLS_FAIL_ACTION:-panic}  # panic | reboot | shell | exit
+MOUNT_CMD=${DMTOOLS_MOUNT_CMD:-}
 MANIFEST=${1:-manifest.env}
 
 need() {
@@ -30,6 +33,9 @@ die() {
   say "ERROR: $*" >&2
   exit 2
 }
+
+# shellcheck disable=SC1090
+. "$(dirname "$0")/lib_fail.sh" 2>/dev/null || true
 
 load_env_manifest() {
   # shellcheck disable=SC1090
@@ -219,9 +225,30 @@ for layer in $STACK_ORDER; do
 
 done
 
+FINAL_DEV="${CRYPT_DEV:-${INTEGRITY_DEV:-}}"
+
 say "Done."
-if [ -n "${CRYPT_DEV:-}" ]; then
-  say "Final mapped device: $CRYPT_DEV"
-elif [ -n "${INTEGRITY_DEV:-}" ]; then
-  say "Final mapped device: $INTEGRITY_DEV"
+if [ -n "$FINAL_DEV" ]; then
+  say "Final mapped device: $FINAL_DEV"
+fi
+
+# Phase gate: in sealed mode we require a mount command and treat failures as fatal.
+if [ "$PHASE" = "sealed" ]; then
+  [ -n "$MOUNT_CMD" ] || die "DMTOOLS_PHASE=sealed requires DMTOOLS_MOUNT_CMD"
+  say "[sealed] executing mount command"
+  if [ "$MODE" = "apply" ]; then
+    # Execute in a shell so users can provide complex commands.
+    sh -c "$MOUNT_CMD" || fail_action "$FAIL_ACTION" "mount command failed"
+  else
+    say "[sealed] dry-run: would run: $MOUNT_CMD"
+  fi
+else
+  if [ -n "$MOUNT_CMD" ]; then
+    say "[bootstrap] mount command provided"
+    if [ "$MODE" = "apply" ]; then
+      sh -c "$MOUNT_CMD" || die "mount command failed (bootstrap)"
+    else
+      say "[bootstrap] dry-run: would run: $MOUNT_CMD"
+    fi
+  fi
 fi

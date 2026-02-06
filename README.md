@@ -62,6 +62,17 @@ export CRYPT_KEY_HEX=<hex-key>                 # or CRYPT_KEY_BIN=/path/key.bin
 MODE=apply firstboot/apply_manifest.sh out/manifest.env
 ```
 
+Sealed mode (fail closed):
+
+```sh
+export DMTOOLS_PHASE=sealed
+export DMTOOLS_MOUNT_CMD='mount -t ext4 -o ro,errors=panic /dev/mapper/crypt /newroot'
+# Optional: what to do if mount fails (default: panic)
+export DMTOOLS_FAIL_ACTION=panic   # panic | reboot | shell | exit
+
+MODE=apply firstboot/apply_manifest.sh out/manifest.env
+```
+
 ---
 
 ## Common configurations
