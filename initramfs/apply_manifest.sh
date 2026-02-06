@@ -15,24 +15,21 @@
 
 set -eu
 
-# Backward compatible aliases:
-# - MODE -> DMT_MODE
-# - DMTOOLS_* -> DMT_*
-DMT_MODE=${DMT_MODE:-${MODE:-dry-run}}
-DMT_PHASE=${DMT_PHASE:-${DMTOOLS_PHASE:-bootstrap}}   # bootstrap | sealed
-DMT_FAIL_ACTION=${DMT_FAIL_ACTION:-${DMTOOLS_FAIL_ACTION:-panic}}  # panic | reboot | shell | exit
-DMT_MOUNT_CMD=${DMT_MOUNT_CMD:-${DMTOOLS_MOUNT_CMD:-}}
+DMT_MODE=${DMT_MODE:-dry-run}
+DMT_PHASE=${DMT_PHASE:-bootstrap}   # bootstrap | sealed
+DMT_FAIL_ACTION=${DMT_FAIL_ACTION:-panic}  # panic | reboot | shell | exit
+DMT_MOUNT_CMD=${DMT_MOUNT_CMD:-}
 
-# Rootfs mount configuration can come from env vars or manifest.env.
-DMT_ROOTFS_MOUNTPOINT=${DMT_ROOTFS_MOUNTPOINT:-${DMTOOLS_NEWROOT:-${ROOTFS_MOUNTPOINT:-/newroot}}}
-DMT_ROOTFS_FSTYPE=${DMT_ROOTFS_FSTYPE:-${DMTOOLS_MOUNT_FSTYPE:-${ROOTFS_FSTYPE:-}}}
+# Rootfs mount configuration can come from manifest.env.
+DMT_ROOTFS_MOUNTPOINT=${DMT_ROOTFS_MOUNTPOINT:-${ROOTFS_MOUNTPOINT:-/newroot}}
+DMT_ROOTFS_FSTYPE=${DMT_ROOTFS_FSTYPE:-${ROOTFS_FSTYPE:-}}
 
 # Sensible defaults:
 # - bootstrap: rw (so system can finish provisioning)
 # - sealed: ro (+ ext4 errors=panic when fstype is ext4)
 if [ "$DMT_PHASE" = "sealed" ]; then
-  if [ -n "${DMT_ROOTFS_OPTS:-${DMTOOLS_MOUNT_OPTS:-}}" ]; then
-    MOUNT_OPTS=${DMT_ROOTFS_OPTS:-$DMTOOLS_MOUNT_OPTS}
+  if [ -n "${DMT_ROOTFS_OPTS:-}" ]; then
+    MOUNT_OPTS=$DMT_ROOTFS_OPTS
   elif [ -n "${DMT_ROOTFS_OPTS_SEALED:-${ROOTFS_OPTS_SEALED:-}}" ]; then
     MOUNT_OPTS=${DMT_ROOTFS_OPTS_SEALED:-$ROOTFS_OPTS_SEALED}
   else
@@ -43,8 +40,8 @@ if [ "$DMT_PHASE" = "sealed" ]; then
     fi
   fi
 else
-  if [ -n "${DMT_ROOTFS_OPTS:-${DMTOOLS_MOUNT_OPTS:-}}" ]; then
-    MOUNT_OPTS=${DMT_ROOTFS_OPTS:-$DMTOOLS_MOUNT_OPTS}
+  if [ -n "${DMT_ROOTFS_OPTS:-}" ]; then
+    MOUNT_OPTS=$DMT_ROOTFS_OPTS
   elif [ -n "${DMT_ROOTFS_OPTS_BOOTSTRAP:-${ROOTFS_OPTS_BOOTSTRAP:-}}" ]; then
     MOUNT_OPTS=${DMT_ROOTFS_OPTS_BOOTSTRAP:-$ROOTFS_OPTS_BOOTSTRAP}
   else
@@ -146,12 +143,12 @@ activate_dm_integrity() {
 load_key_into_keyring() {
   need keyctl || die "keyctl not found"
 
-  KEY_DESC=${DMT_CRYPT_KEY_DESC:-${CRYPT_KEY_DESC:-dm-key}}
-  if [ -n "${DMT_CRYPT_KEY_HEX:-${CRYPT_KEY_HEX:-}}" ]; then
+  KEY_DESC=${DMT_CRYPT_KEY_DESC:-dm-key}
+  if [ -n "${DMT_CRYPT_KEY_HEX:-}" ]; then
     need xxd || die "xxd required for DMT_CRYPT_KEY_HEX"
-    KEYID=$(printf '%s' "${DMT_CRYPT_KEY_HEX:-$CRYPT_KEY_HEX}" | xxd -r -p | keyctl padd user "$KEY_DESC" @s)
-  elif [ -n "${DMT_CRYPT_KEY_BIN:-${CRYPT_KEY_BIN:-}}" ]; then
-    KEYID=$(keyctl padd user "$KEY_DESC" @s < "${DMT_CRYPT_KEY_BIN:-$CRYPT_KEY_BIN}")
+    KEYID=$(printf '%s' "$DMT_CRYPT_KEY_HEX" | xxd -r -p | keyctl padd user "$KEY_DESC" @s)
+  elif [ -n "${DMT_CRYPT_KEY_BIN:-}" ]; then
+    KEYID=$(keyctl padd user "$KEY_DESC" @s < "$DMT_CRYPT_KEY_BIN")
   else
     die "missing key material: provide DMT_CRYPT_KEY_HEX or DMT_CRYPT_KEY_BIN"
   fi
@@ -171,7 +168,7 @@ activate_dm_crypt_plain() {
     return 0
   }
 
-  UNDER_DEV=${DMT_CRYPT_UNDER_BDEV:-${CRYPT_UNDER_DEV:-${INTEGRITY_DEV:-${DMT_DATA_BDEV:-${DATA_DEV:-}}}}}
+  UNDER_DEV=${DMT_CRYPT_UNDER_BDEV:-${INTEGRITY_DEV:-${DMT_DATA_BDEV:-}}}
   [ -n "$UNDER_DEV" ] || die "no underlying device for dm-crypt (set DMT_DATA_BDEV or activate dm-integrity first)"
 
   SECTORS=$(blockdev --getsz "$UNDER_DEV" 2>/dev/null || true)
@@ -233,7 +230,7 @@ for layer in $STACK_ORDER; do
     raw)
       # In initramfs, the raw backing is usually a block device.
       # CI artifacts may be used to provision it, but that is outside this script.
-      : "${DMT_DATA_BDEV:=${DATA_DEV:-}}"
+      : "${DMT_DATA_BDEV:=}"
       if [ -z "$DMT_DATA_BDEV" ]; then
         say "[raw] DMT_DATA_BDEV not set (ok for dry-run; required for apply)"
       else

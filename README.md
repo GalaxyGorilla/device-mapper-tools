@@ -58,7 +58,6 @@ Bootstrap is the default phase (`DMT_PHASE=bootstrap`).
 Minimal *complete* bootstrap example (crypt-only stack):
 
 ```sh
-# MUST: tell the script which real block device backs the stack
 export DMT_DATA_BDEV=/dev/<your-data-blockdev>
 
 export DMT_CRYPT_KEY_HEX=<hex-key>
