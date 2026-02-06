@@ -19,6 +19,9 @@ MODE=${MODE:-dry-run}
 PHASE=${DMTOOLS_PHASE:-bootstrap}   # bootstrap | sealed
 FAIL_ACTION=${DMTOOLS_FAIL_ACTION:-panic}  # panic | reboot | shell | exit
 MOUNT_CMD=${DMTOOLS_MOUNT_CMD:-}
+NEWROOT=${DMTOOLS_NEWROOT:-/newroot}
+MOUNT_FSTYPE=${DMTOOLS_MOUNT_FSTYPE:-}
+MOUNT_OPTS=${DMTOOLS_MOUNT_OPTS:-ro}
 MANIFEST=${1:-manifest.env}
 
 need() {
@@ -232,23 +235,47 @@ if [ -n "$FINAL_DEV" ]; then
   say "Final mapped device: $FINAL_DEV"
 fi
 
-# Phase gate: in sealed mode we require a mount command and treat failures as fatal.
+default_mount_cmd() {
+  # Default mount command if none provided:
+  # mount -t <fstype?> -o <opts> <final_dev> <newroot>
+  # In dry-run mode we may not have created mappings; guess the expected /dev/mapper path.
+  if [ -z "$FINAL_DEV" ]; then
+    if [ "$MODE" != "apply" ]; then
+      if echo ",$STACK_ORDER," | grep -q ",dm-crypt,"; then
+        FINAL_DEV="/dev/mapper/${CRYPT_NAME:-crypt}"
+      elif echo ",$STACK_ORDER," | grep -q ",dm-integrity,"; then
+        FINAL_DEV="/dev/mapper/${INTEGRITY_NAME:-integrity}"
+      fi
+    fi
+  fi
+  [ -n "$FINAL_DEV" ] || die "no final mapped device to mount"
+  cmd="mount"
+  if [ -n "$MOUNT_FSTYPE" ]; then
+    cmd="$cmd -t $MOUNT_FSTYPE"
+  fi
+  cmd="$cmd -o $MOUNT_OPTS $FINAL_DEV $NEWROOT"
+  printf '%s' "$cmd"
+}
+
+if [ -n "$MOUNT_CMD" ]; then
+  EFFECTIVE_MOUNT_CMD=$MOUNT_CMD
+else
+  EFFECTIVE_MOUNT_CMD=$(default_mount_cmd)
+fi
+
 if [ "$PHASE" = "sealed" ]; then
-  [ -n "$MOUNT_CMD" ] || die "DMTOOLS_PHASE=sealed requires DMTOOLS_MOUNT_CMD"
   say "[sealed] executing mount command"
   if [ "$MODE" = "apply" ]; then
-    # Execute in a shell so users can provide complex commands.
-    sh -c "$MOUNT_CMD" || fail_action "$FAIL_ACTION" "mount command failed"
+    sh -c "$EFFECTIVE_MOUNT_CMD" || fail_action "$FAIL_ACTION" "mount command failed"
   else
-    say "[sealed] dry-run: would run: $MOUNT_CMD"
+    say "[sealed] dry-run: would run: $EFFECTIVE_MOUNT_CMD"
   fi
 else
-  if [ -n "$MOUNT_CMD" ]; then
-    say "[bootstrap] mount command provided"
-    if [ "$MODE" = "apply" ]; then
-      sh -c "$MOUNT_CMD" || die "mount command failed (bootstrap)"
-    else
-      say "[bootstrap] dry-run: would run: $MOUNT_CMD"
-    fi
+  # bootstrap
+  say "[bootstrap] executing mount command"
+  if [ "$MODE" = "apply" ]; then
+    sh -c "$EFFECTIVE_MOUNT_CMD" || die "mount command failed (bootstrap)"
+  else
+    say "[bootstrap] dry-run: would run: $EFFECTIVE_MOUNT_CMD"
   fi
 fi

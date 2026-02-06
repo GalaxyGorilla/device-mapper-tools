@@ -70,11 +70,18 @@ MODE=apply firstboot/apply_manifest.sh out/manifest.env
 
 ### Step 3 (target initramfs, sealed): fail closed
 
-In sealed mode, a mount command is **required**. If it fails, the initramfs takes a fatal action (default: panic).
+In sealed mode, a mount command is optional: by default the script mounts the final mapped device at `/newroot`.
+If mounting fails, the initramfs takes a fatal action (default: panic).
 
 ```sh
 export DMTOOLS_PHASE=sealed
-export DMTOOLS_MOUNT_CMD='mount -t ext4 -o ro,errors=panic /dev/mapper/crypt /newroot'
+# Optional: override mount behavior
+# export DMTOOLS_MOUNT_CMD='mount -t ext4 -o ro,errors=panic /dev/mapper/crypt /newroot'
+# Or use defaults:
+export DMTOOLS_NEWROOT=/newroot
+export DMTOOLS_MOUNT_FSTYPE=ext4
+export DMTOOLS_MOUNT_OPTS='ro,errors=panic'
+
 # Optional: what to do if mount fails (default: panic)
 export DMTOOLS_FAIL_ACTION=panic   # panic | reboot | shell | exit
 
