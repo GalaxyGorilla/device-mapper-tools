@@ -85,6 +85,17 @@
         "additionalProperties": false
       }
     },
+    "rootfs": {
+      "type": "object",
+      "description": "How initramfs should mount the final mapped block device",
+      "properties": {
+        "mountpoint": {"type": "string"},
+        "fstype": {"type": "string"},
+        "opts_bootstrap": {"type": "string"},
+        "opts_sealed": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
     "firstboot": {
       "type": "object",
       "description": "Actions that must be performed on the target device on first boot",

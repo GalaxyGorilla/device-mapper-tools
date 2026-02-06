@@ -19,9 +19,34 @@ MODE=${MODE:-dry-run}
 PHASE=${DMTOOLS_PHASE:-bootstrap}   # bootstrap | sealed
 FAIL_ACTION=${DMTOOLS_FAIL_ACTION:-panic}  # panic | reboot | shell | exit
 MOUNT_CMD=${DMTOOLS_MOUNT_CMD:-}
-NEWROOT=${DMTOOLS_NEWROOT:-/newroot}
-MOUNT_FSTYPE=${DMTOOLS_MOUNT_FSTYPE:-}
-MOUNT_OPTS=${DMTOOLS_MOUNT_OPTS:-ro}
+# Mount configuration can come from env vars or manifest.env.
+NEWROOT=${DMTOOLS_NEWROOT:-${ROOTFS_MOUNTPOINT:-/newroot}}
+MOUNT_FSTYPE=${DMTOOLS_MOUNT_FSTYPE:-${ROOTFS_FSTYPE:-}}
+
+# Sensible defaults:
+# - bootstrap: rw (so system can finish provisioning)
+# - sealed: ro (+ ext4 errors=panic when fstype is ext4)
+if [ "$PHASE" = "sealed" ]; then
+  if [ -n "${DMTOOLS_MOUNT_OPTS:-}" ]; then
+    MOUNT_OPTS=$DMTOOLS_MOUNT_OPTS
+  elif [ -n "${ROOTFS_OPTS_SEALED:-}" ]; then
+    MOUNT_OPTS=$ROOTFS_OPTS_SEALED
+  else
+    if [ "$MOUNT_FSTYPE" = "ext4" ]; then
+      MOUNT_OPTS="ro,errors=panic"
+    else
+      MOUNT_OPTS="ro"
+    fi
+  fi
+else
+  if [ -n "${DMTOOLS_MOUNT_OPTS:-}" ]; then
+    MOUNT_OPTS=$DMTOOLS_MOUNT_OPTS
+  elif [ -n "${ROOTFS_OPTS_BOOTSTRAP:-}" ]; then
+    MOUNT_OPTS=$ROOTFS_OPTS_BOOTSTRAP
+  else
+    MOUNT_OPTS="rw"
+  fi
+fi
 MANIFEST=${1:-manifest.env}
 
 need() {
@@ -245,6 +270,8 @@ default_mount_cmd() {
         FINAL_DEV="/dev/mapper/${CRYPT_NAME:-crypt}"
       elif echo ",$STACK_ORDER," | grep -q ",dm-integrity,"; then
         FINAL_DEV="/dev/mapper/${INTEGRITY_NAME:-integrity}"
+      elif echo ",$STACK_ORDER," | grep -q ",dm-verity,"; then
+        FINAL_DEV="/dev/mapper/${VERITY_NAME:-verity}"
       fi
     fi
   fi

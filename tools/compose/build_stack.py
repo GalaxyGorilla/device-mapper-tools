@@ -96,6 +96,12 @@ def main() -> int:
     k.add_argument("--key-file-hex", help="File with ASCII hex key")
     k.add_argument("--key-file-bin", help="File with raw key bytes")
 
+    # rootfs hints
+    ap.add_argument("--rootfs-fstype", default="")
+    ap.add_argument("--rootfs-mountpoint", default="/newroot")
+    ap.add_argument("--rootfs-opts-bootstrap", default="")
+    ap.add_argument("--rootfs-opts-sealed", default="")
+
     ap.add_argument("--manifest", default="manifest.json")
 
     args = ap.parse_args()
@@ -235,6 +241,16 @@ def main() -> int:
             "--crypt-sector-size", str(args.crypt_sector_size),
             "--crypt-iv-offset", str(args.crypt_iv_offset),
         ]
+
+    # rootfs hints (pass through)
+    if args.rootfs_fstype:
+        make_cmd += ["--rootfs-fstype", args.rootfs_fstype]
+    if args.rootfs_mountpoint:
+        make_cmd += ["--rootfs-mountpoint", args.rootfs_mountpoint]
+    if args.rootfs_opts_bootstrap:
+        make_cmd += ["--rootfs-opts-bootstrap", args.rootfs_opts_bootstrap]
+    if args.rootfs_opts_sealed:
+        make_cmd += ["--rootfs-opts-sealed", args.rootfs_opts_sealed]
 
     run(make_cmd)
 

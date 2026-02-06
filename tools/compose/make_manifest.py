@@ -88,6 +88,12 @@ def main() -> int:
     ap.add_argument("--verity-salt-hex", default="")
     ap.add_argument("--verity-root-hash-hex", default="")
 
+    # rootfs mount hints (optional but recommended)
+    ap.add_argument("--rootfs-fstype", default="")
+    ap.add_argument("--rootfs-mountpoint", default="/newroot")
+    ap.add_argument("--rootfs-opts-bootstrap", default="")
+    ap.add_argument("--rootfs-opts-sealed", default="")
+
     ap.add_argument("--out", default="manifest.json")
 
     args = ap.parse_args()
@@ -167,11 +173,22 @@ def main() -> int:
     elif args.stack == "crypt-then-verity":
         push_crypt(); push_verity()
 
+    rootfs = {
+        "mountpoint": args.rootfs_mountpoint,
+    }
+    if args.rootfs_fstype:
+        rootfs["fstype"] = args.rootfs_fstype
+    if args.rootfs_opts_bootstrap:
+        rootfs["opts_bootstrap"] = args.rootfs_opts_bootstrap
+    if args.rootfs_opts_sealed:
+        rootfs["opts_sealed"] = args.rootfs_opts_sealed
+
     manifest: Dict[str, Any] = {
         "manifest_version": 1,
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
         "images": images,
         "stack": stack,
+        "rootfs": rootfs,
         "firstboot": {
             "required": True,
             "notes": "Activation requires CAP_SYS_ADMIN (dmsetup/loop) and possibly device-unique secrets; do this on the target device.",

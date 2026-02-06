@@ -26,6 +26,11 @@ INTEGRITY_BLOCK_SIZE=$(jq -r '.integrity.block_size // ""' "$IN")
 INTEGRITY_MODE=$(jq -r '.integrity.mode // ""' "$IN")
 INTEGRITY_BUFFER_SECTORS=$(jq -r '.integrity.buffer_sectors // ""' "$IN")
 
+ROOTFS_MOUNTPOINT=$(jq -r '.rootfs.mountpoint // ""' "$IN")
+ROOTFS_FSTYPE=$(jq -r '.rootfs.fstype // ""' "$IN")
+ROOTFS_OPTS_BOOTSTRAP=$(jq -r '.rootfs.opts_bootstrap // ""' "$IN")
+ROOTFS_OPTS_SEALED=$(jq -r '.rootfs.opts_sealed // ""' "$IN")
+
 # Write POSIX shell assignments.
 # shellcheck disable=SC2129
 {
@@ -44,6 +49,11 @@ INTEGRITY_BUFFER_SECTORS=$(jq -r '.integrity.buffer_sectors // ""' "$IN")
   [ -n "$INTEGRITY_BLOCK_SIZE" ] && echo "INTEGRITY_BLOCK_SIZE=$INTEGRITY_BLOCK_SIZE"
   [ -n "$INTEGRITY_MODE" ] && echo "INTEGRITY_MODE=$INTEGRITY_MODE"
   [ -n "$INTEGRITY_BUFFER_SECTORS" ] && echo "INTEGRITY_BUFFER_SECTORS=$INTEGRITY_BUFFER_SECTORS"
+
+  [ -n "$ROOTFS_MOUNTPOINT" ] && echo "ROOTFS_MOUNTPOINT=\"$ROOTFS_MOUNTPOINT\""
+  [ -n "$ROOTFS_FSTYPE" ] && echo "ROOTFS_FSTYPE=\"$ROOTFS_FSTYPE\""
+  [ -n "$ROOTFS_OPTS_BOOTSTRAP" ] && echo "ROOTFS_OPTS_BOOTSTRAP=\"$ROOTFS_OPTS_BOOTSTRAP\""
+  [ -n "$ROOTFS_OPTS_SEALED" ] && echo "ROOTFS_OPTS_SEALED=\"$ROOTFS_OPTS_SEALED\""
 } > "$OUT"
 
 echo "$OUT"
