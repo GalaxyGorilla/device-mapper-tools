@@ -53,42 +53,52 @@ On the embedded target you typically have real block devices (no loop), and you 
 
 `initramfs/apply_manifest.sh` is **POSIX `/bin/sh`** and is designed to run in an **initramfs**.
 
-Bootstrap (default) will activate the stack and (optionally) run a mount command.
+Bootstrap is the default phase (`DMTOOLS_PHASE=bootstrap`).
 
-Dry-run (prints a plan):
+Minimal *complete* bootstrap example (crypt-only stack):
 
 ```sh
-MODE=dry-run initramfs/apply_manifest.sh out/manifest.env
+# MUST: tell the script which real block device backs the stack
+export DATA_DEV=/dev/<your-data-blockdev>
+
+# MUST: provide key material (one of these)
+export CRYPT_KEY_HEX=<hex-key>
+# export CRYPT_KEY_BIN=/path/key.bin
+
+# MUST: run in apply mode
+MODE=apply initramfs/apply_manifest.sh out/manifest.env
 ```
 
-Apply (actually runs `dmsetup` + `keyctl`):
+If your stack includes dm-integrity, you MUST also provide the metadata device:
 
 ```sh
-export DATA_DEV=/dev/<your-data-blockdev>
-export META_DEV=/dev/<your-meta-blockdev>      # only for stacks using dm-integrity
-export CRYPT_KEY_HEX=<hex-key>                 # or CRYPT_KEY_BIN=/path/key.bin
-
-# Optional: try mounting root
-export DMTOOLS_MOUNT_CMD='mount -t ext4 /dev/mapper/crypt /newroot'
-
-MODE=apply initramfs/apply_manifest.sh out/manifest.env
+export META_DEV=/dev/<your-meta-blockdev>
 ```
 
 ### Step 3 (target initramfs, sealed): fail closed
 
-In sealed mode, a mount command is optional: by default the script mounts the final mapped device at `/newroot`.
-If mounting fails, the initramfs takes a fatal action (default: panic).
+Sealed mode is for later boots: failures during mount are treated as fatal.
+
+Minimal *complete* sealed example (crypt-only stack):
 
 ```sh
 export DMTOOLS_PHASE=sealed
-# Optional: override mount behavior
-# export DMTOOLS_MOUNT_CMD='mount -t ext4 -o ro,errors=panic /dev/mapper/crypt /newroot'
 
-# Optional: what to do if mount fails (default: panic)
-export DMTOOLS_FAIL_ACTION=panic   # panic | reboot | shell | exit
+# MUST: backing device
+export DATA_DEV=/dev/<your-data-blockdev>
+
+# MUST: key material
+export CRYPT_KEY_HEX=<hex-key>
+# export CRYPT_KEY_BIN=/path/key.bin
 
 MODE=apply initramfs/apply_manifest.sh out/manifest.env
 ```
+
+Notes:
+
+- Mounting is attempted automatically using `rootfs.*` values stored in the manifest (recommended). If you did not set them in CI, you can still override with `DMTOOLS_MOUNT_CMD=...`.
+- If your stack includes dm-integrity, you MUST provide `META_DEV=/dev/<your-meta-blockdev>`.
+- Optional fatal behavior override: `DMTOOLS_FAIL_ACTION=panic|reboot|shell|exit` (default: `panic`).
 
 ---
 
