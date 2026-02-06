@@ -2,12 +2,13 @@
 
 Utilities for building **device-mapper based storage images** (dm-crypt, dm-integrity, dm-verity) in environments where you **cannot** use privileged kernel interfaces (typical CI/CD runners).
 
-The guiding idea is a two-step workflow:
+The guiding idea is a three-step workflow:
 
 1. **CI/CD (unprivileged):** do everything that is *pure file I/O* (create images, encrypt files, format dm-integrity metadata, compute hashes, …).
-2. **First boot (privileged, on the embedded target):** do the minimum privileged work (activate dm targets with `dmsetup`, load keys with `keyctl`, mount, provision, …).
+2. **Bootstrap boot (privileged, on the embedded target):** first activation while the system is still “allowed to settle”. You activate the stack and bring the system into a known-good state.
+3. **Sealed boots (privileged, on the embedded target):** later boots are *fail-closed*. If activation or mount fails (e.g. due to tampering causing I/O errors), the initramfs takes a fatal action (default: panic).
 
-This repo helps you produce the right **artifacts** in step 1 and a small **activation plan** for step 2.
+This repo helps you produce the right **artifacts** in step 1 and a small **activation plan** for steps 2 and 3.
 
 ---
 
@@ -40,11 +41,13 @@ For initramfs use, convert the JSON manifest to a tiny shell-friendly file:
 tools/compose/make_manifest_env.sh out/manifest.json out/manifest.env
 ```
 
-### Step 2 (target initramfs): activate the stack
+### Step 2 (target initramfs, bootstrap): first activation
 
 On the embedded target you typically have real block devices (no loop), and you must provide key material from a device-specific source.
 
 `firstboot/apply_manifest.sh` is **POSIX `/bin/sh`** and is designed to run in an **initramfs**.
+
+Bootstrap (default) will activate the stack and (optionally) run a mount command.
 
 Dry-run (prints a plan):
 
@@ -59,10 +62,15 @@ export DATA_DEV=/dev/<your-data-blockdev>
 export META_DEV=/dev/<your-meta-blockdev>      # only for stacks using dm-integrity
 export CRYPT_KEY_HEX=<hex-key>                 # or CRYPT_KEY_BIN=/path/key.bin
 
+# Optional: try mounting root
+export DMTOOLS_MOUNT_CMD='mount -t ext4 /dev/mapper/crypt /newroot'
+
 MODE=apply firstboot/apply_manifest.sh out/manifest.env
 ```
 
-Sealed mode (fail closed):
+### Step 3 (target initramfs, sealed): fail closed
+
+In sealed mode, a mount command is **required**. If it fails, the initramfs takes a fatal action (default: panic).
 
 ```sh
 export DMTOOLS_PHASE=sealed
