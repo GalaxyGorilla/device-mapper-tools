@@ -80,5 +80,11 @@ python3 tools/compose/make_manifest.py \
 
 For AEAD intent (dm-crypt authenticated mode + dm-integrity tags), set `--crypt-mode aead` and record the intended tag size.
 
-On the embedded device, `firstboot/apply_manifest.sh` currently prints the intended actions (dry run). Later we can extend it to actually activate dm targets.
+On the embedded device, `firstboot/apply_manifest.sh` is intended to run in an **initramfs**. It is POSIX-shell-first and supports a real `MODE=apply` path using **dmsetup + keyctl**.
+
+For initramfs convenience you can convert `manifest.json` to `manifest.env`:
+
+```sh
+tools/compose/make_manifest_env.sh manifest.json manifest.env
+```
 
