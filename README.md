@@ -28,6 +28,12 @@ python3 tools/dm-integrity/dm_integrity_offline_format.py \
 ./tools/dm-integrity/dm_integrity_selftest.sh 64
 ```
 
+## dm-crypt (offline, unprivileged)
+
+`tools/dm-crypt/dmcrypt_plain_cbc.py` encrypts/decrypts a raw image using dm-crypt compatible settings (AES-CBC, IV=plain). This is a building block for unprivileged CI pipelines.
+
+(Your first-boot activation will still need kernel dm-crypt + key handling.)
+
 ## Manifest (CI artifact)
 
 Create a manifest describing the artifacts + intended stack:
