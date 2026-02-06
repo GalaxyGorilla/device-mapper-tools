@@ -1,90 +1,138 @@
 # device-mapper-tools
 
-Small utilities related to Linux device-mapper, designed for **unprivileged CI/CD** workflows.
+Utilities for building **device-mapper based storage images** (dm-crypt, dm-integrity, and later dm-verity) in environments where you **cannot** use privileged kernel interfaces (typical CI/CD runners).
 
-The overall model is:
+The guiding idea is a two-step workflow:
 
-1. **CI/CD (unprivileged):** create/format image artifacts as pure file operations.
-2. **First boot (privileged, on target):** perform the minimum required activation steps (dmsetup, key retrieval, etc.).
+1. **CI/CD (unprivileged):** do everything that is *pure file I/O* (create images, encrypt files, format dm-integrity metadata, compute hashes, …).
+2. **First boot (privileged, on the embedded target):** do the minimum privileged work (activate dm targets with `dmsetup`, load keys with `keyctl`, mount, provision, …).
 
-To connect these two worlds we use a small JSON **manifest** (see `spec/manifest.schema.json`).
+This repo helps you produce the right **artifacts** in step 1 and a small **activation plan** for step 2.
 
-## dm-integrity offline formatter (unprivileged)
+---
 
-`tools/dm-integrity/dm_integrity_format.py` formats a **dm-integrity meta_device** image file offline, without needing `CAP_SYS_ADMIN` (no dmsetup/loop/devmapper ioctls). This is useful for CI pipelines that can create artifacts unprivileged, and only activate dm-integrity in a privileged stage.
+## TL;DR: how you’re supposed to use this
 
-### Quick start
+### Step 1 (CI): build artifacts + manifest
 
-```bash
-truncate -s 64M data.img
-python3 tools/dm-integrity/dm_integrity_format.py \
-  --data-image data.img \
-  --meta-image integrity.meta.img
+Use the composer to build an output directory with images and a manifest:
+
+```sh
+truncate -s 64M fs.img
+
+python3 tools/compose/build_stack.py \
+  --in fs.img \
+  --outdir out \
+  --stack crypt-only \
+  --profile plain-crypt \
+  --key-hex <your-hex-key>
 ```
 
-### Privileged smoke test
+This produces (example):
 
-```bash
+- `out/data.img` (the image that will back the bottom layer)
+- `out/integrity.meta.img` (if the stack includes dm-integrity)
+- `out/manifest.json` (human/tool-friendly)
+
+For initramfs use, convert the JSON manifest to a tiny shell-friendly file:
+
+```sh
+tools/compose/make_manifest_env.sh out/manifest.json out/manifest.env
+```
+
+### Step 2 (target initramfs): activate the stack
+
+On the embedded target you typically have real block devices (no loop), and you must provide key material from a device-specific source.
+
+`firstboot/apply_manifest.sh` is **POSIX `/bin/sh`** and is designed to run in an **initramfs**.
+
+Dry-run (prints a plan):
+
+```sh
+MODE=dry-run firstboot/apply_manifest.sh out/manifest.env
+```
+
+Apply (actually runs `dmsetup` + `keyctl`):
+
+```sh
+export DATA_DEV=/dev/<your-data-blockdev>
+export META_DEV=/dev/<your-meta-blockdev>      # only for stacks using dm-integrity
+export CRYPT_KEY_HEX=<hex-key>                 # or CRYPT_KEY_BIN=/path/key.bin
+
+MODE=apply firstboot/apply_manifest.sh out/manifest.env
+```
+
+---
+
+## Common configurations
+
+This repo intentionally exposes a small set of “common” stack shapes:
+
+- `crypt-only` (plain dm-crypt)
+- `integrity-only` (dm-integrity standalone)
+- `integrity-then-crypt`
+- `crypt-then-integrity`
+
+And “profiles” that describe *what kind of crypt you want*:
+
+- `plain-crypt`: unprivileged offline encryption (today: AES-CBC plain IV; more modes like XTS planned)
+- `aead`: **intent only** (dm-crypt authenticated mode + dm-integrity tags). The manifest records the intent/parameters; first-boot activation support is added once a verified dmsetup recipe is locked down.
+
+---
+
+## Artifacts and the manifest
+
+The manifest is the contract between CI and the target.
+
+- **`manifest.json`** is the canonical format (see `spec/manifest.schema.json`).
+- **`manifest.env`** is a minimal, initramfs-friendly derivative used by the shell firstboot script.
+
+The manifest records:
+
+- paths + sizes + sha256 of the produced artifacts
+- the stack ordering (bottom → top)
+- parameters needed for activation (e.g. dm-integrity tag size, dm-crypt cipher/sector size, etc.)
+
+---
+
+## Tools
+
+### dm-integrity (offline formatting)
+
+`tools/dm-integrity/dm_integrity_format.py`
+
+Formats a **dm-integrity meta_device** image offline (no privileged ioctls). Defaults are conservative for broad kernel compatibility (6.x).
+
+Smoke test (requires privilege for dmsetup/loop):
+
+```sh
 ./tools/dm-integrity/dm_integrity_selftest.sh 64
 ```
 
-## dm-crypt (offline, unprivileged)
+### dm-crypt (offline helper)
 
-`tools/dm-crypt/dm_crypt_plain_cbc.py` encrypts/decrypts a raw image using dm-crypt compatible settings (AES-CBC, IV=plain). This is a building block for unprivileged CI pipelines.
+`tools/dm-crypt/dm_crypt_plain_cbc.py`
 
-(Your first-boot activation will still need kernel dm-crypt + key handling.)
+Encrypt/decrypt a raw image using dm-crypt compatible settings (AES-CBC, IV=plain). This is a CI building block.
 
-## Compose (CI-friendly)
+### Compose
 
-`tools/compose/build_stack.py` builds common artifact sets in an unprivileged CI job and emits a `manifest.json` you can carry to the device.
+- `tools/compose/build_stack.py` (recommended entry point)
+- `tools/compose/make_manifest.py` (lower-level manifest generator)
+- `tools/compose/make_manifest_env.sh` (JSON → ENV for initramfs)
 
-Examples:
+### First boot (initramfs)
 
-Plain dm-crypt (offline encryption), crypt-only stack:
+`firstboot/apply_manifest.sh`
 
-```bash
-truncate -s 64M fs.img
-python3 tools/compose/build_stack.py \
-  --in fs.img \
-  --outdir out_plain \
-  --stack crypt-only \
-  --profile plain-crypt \
-  --key-hex 000102...  # provide your own key handling in CI
-```
+- POSIX shell
+- prefers `dmsetup + keyctl`
+- defaults to dry-run
 
-AEAD intent (dm-crypt authenticated mode + dm-integrity tags):
+---
 
-```bash
-truncate -s 64M fs.img
-python3 tools/compose/build_stack.py \
-  --in fs.img \
-  --outdir out_aead \
-  --stack integrity-then-crypt \
-  --profile aead \
-  --integrity-tag-size 16
-```
+## Security notes (short)
 
-## Manifest (CI artifact)
-
-Create a manifest describing the artifacts + intended stack:
-
-```bash
-python3 tools/compose/make_manifest.py \
-  --data data.img \
-  --integrity-meta integrity.meta.img \
-  --crypt-header crypt.header.img \
-  --stack integrity-then-crypt \
-  --crypt-mode plain \
-  --out manifest.json
-```
-
-For AEAD intent (dm-crypt authenticated mode + dm-integrity tags), set `--crypt-mode aead` and record the intended tag size.
-
-On the embedded device, `firstboot/apply_manifest.sh` is intended to run in an **initramfs**. It is POSIX-shell-first and supports a real `MODE=apply` path using **dmsetup + keyctl**.
-
-For initramfs convenience you can convert `manifest.json` to `manifest.env`:
-
-```sh
-tools/compose/make_manifest_env.sh manifest.json manifest.env
-```
-
+- CI artifacts should generally **not** embed device-unique secrets.
+- Prefer loading keys on target (TPM/secure element/OTP/HSM) and using `keyctl` + dmsetup keyring integration.
+- Always treat the output images as sensitive if they contain encrypted payloads or metadata that leaks access patterns.
