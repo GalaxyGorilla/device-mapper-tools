@@ -2,7 +2,7 @@
 # initramfs-friendly manifest consumer for device-mapper-tools
 #
 # Default: DRY RUN (prints a plan).
-# To execute: MODE=apply ./apply_manifest.sh manifest.env
+# To execute: DMT_MODE=apply ./apply_manifest.sh manifest.env
 #
 # This script intentionally prefers:
 # - POSIX shell
@@ -15,38 +15,43 @@
 
 set -eu
 
-MODE=${MODE:-dry-run}
-PHASE=${DMTOOLS_PHASE:-bootstrap}   # bootstrap | sealed
-FAIL_ACTION=${DMTOOLS_FAIL_ACTION:-panic}  # panic | reboot | shell | exit
-MOUNT_CMD=${DMTOOLS_MOUNT_CMD:-}
-# Mount configuration can come from env vars or manifest.env.
-NEWROOT=${DMTOOLS_NEWROOT:-${ROOTFS_MOUNTPOINT:-/newroot}}
-MOUNT_FSTYPE=${DMTOOLS_MOUNT_FSTYPE:-${ROOTFS_FSTYPE:-}}
+# Backward compatible aliases:
+# - MODE -> DMT_MODE
+# - DMTOOLS_* -> DMT_*
+DMT_MODE=${DMT_MODE:-${MODE:-dry-run}}
+DMT_PHASE=${DMT_PHASE:-${DMTOOLS_PHASE:-bootstrap}}   # bootstrap | sealed
+DMT_FAIL_ACTION=${DMT_FAIL_ACTION:-${DMTOOLS_FAIL_ACTION:-panic}}  # panic | reboot | shell | exit
+DMT_MOUNT_CMD=${DMT_MOUNT_CMD:-${DMTOOLS_MOUNT_CMD:-}}
+
+# Rootfs mount configuration can come from env vars or manifest.env.
+DMT_ROOTFS_MOUNTPOINT=${DMT_ROOTFS_MOUNTPOINT:-${DMTOOLS_NEWROOT:-${ROOTFS_MOUNTPOINT:-/newroot}}}
+DMT_ROOTFS_FSTYPE=${DMT_ROOTFS_FSTYPE:-${DMTOOLS_MOUNT_FSTYPE:-${ROOTFS_FSTYPE:-}}}
 
 # Sensible defaults:
 # - bootstrap: rw (so system can finish provisioning)
 # - sealed: ro (+ ext4 errors=panic when fstype is ext4)
-if [ "$PHASE" = "sealed" ]; then
-  if [ -n "${DMTOOLS_MOUNT_OPTS:-}" ]; then
-    MOUNT_OPTS=$DMTOOLS_MOUNT_OPTS
-  elif [ -n "${ROOTFS_OPTS_SEALED:-}" ]; then
-    MOUNT_OPTS=$ROOTFS_OPTS_SEALED
+if [ "$DMT_PHASE" = "sealed" ]; then
+  if [ -n "${DMT_ROOTFS_OPTS:-${DMTOOLS_MOUNT_OPTS:-}}" ]; then
+    MOUNT_OPTS=${DMT_ROOTFS_OPTS:-$DMTOOLS_MOUNT_OPTS}
+  elif [ -n "${DMT_ROOTFS_OPTS_SEALED:-${ROOTFS_OPTS_SEALED:-}}" ]; then
+    MOUNT_OPTS=${DMT_ROOTFS_OPTS_SEALED:-$ROOTFS_OPTS_SEALED}
   else
-    if [ "$MOUNT_FSTYPE" = "ext4" ]; then
+    if [ "$DMT_ROOTFS_FSTYPE" = "ext4" ]; then
       MOUNT_OPTS="ro,errors=panic"
     else
       MOUNT_OPTS="ro"
     fi
   fi
 else
-  if [ -n "${DMTOOLS_MOUNT_OPTS:-}" ]; then
-    MOUNT_OPTS=$DMTOOLS_MOUNT_OPTS
-  elif [ -n "${ROOTFS_OPTS_BOOTSTRAP:-}" ]; then
-    MOUNT_OPTS=$ROOTFS_OPTS_BOOTSTRAP
+  if [ -n "${DMT_ROOTFS_OPTS:-${DMTOOLS_MOUNT_OPTS:-}}" ]; then
+    MOUNT_OPTS=${DMT_ROOTFS_OPTS:-$DMTOOLS_MOUNT_OPTS}
+  elif [ -n "${DMT_ROOTFS_OPTS_BOOTSTRAP:-${ROOTFS_OPTS_BOOTSTRAP:-}}" ]; then
+    MOUNT_OPTS=${DMT_ROOTFS_OPTS_BOOTSTRAP:-$ROOTFS_OPTS_BOOTSTRAP}
   else
     MOUNT_OPTS="rw"
   fi
 fi
+
 MANIFEST=${1:-manifest.env}
 
 need() {
@@ -102,17 +107,17 @@ load_json_manifest() {
 # --- dm activation helpers (stubs / minimal) ---------------------------------
 
 # NOTE: We do not (yet) implement loop setup here, because initramfs typically
-# uses real block devices. You can point DATA_DEV at a block device path.
+# uses real block devices. You can point DMT_DATA_BDEV at a block device path.
 
 activate_dm_integrity() {
-  : "${DATA_DEV:?missing DATA_DEV (block device path)}"
-  : "${META_DEV:?missing META_DEV (block device path)}"
+  : "${DMT_DATA_BDEV:?missing DMT_DATA_BDEV (block device path)}"
+  : "${DMT_INTEGRITY_META_BDEV:?missing DMT_INTEGRITY_META_BDEV (block device path)}"
   : "${INTEGRITY_TAG_SIZE:?missing INTEGRITY_TAG_SIZE}"
   : "${INTEGRITY_MODE:?missing INTEGRITY_MODE (J/D/B/R)}"
   : "${INTEGRITY_BUFFER_SECTORS:?missing INTEGRITY_BUFFER_SECTORS}"
 
   need dmsetup || {
-    if [ "$MODE" = "apply" ]; then
+    if [ "$DMT_MODE" = "apply" ]; then
       die "dmsetup not found"
     fi
     say "[dm-integrity] dmsetup not found (dry-run: skipping)"
@@ -120,16 +125,16 @@ activate_dm_integrity() {
   }
 
   # Determine device size in 512-byte sectors
-  SECTORS=$(blockdev --getsz "$DATA_DEV" 2>/dev/null || true)
-  [ -n "$SECTORS" ] || die "could not determine size (sectors) for $DATA_DEV (need blockdev)"
+  SECTORS=$(blockdev --getsz "$DMT_DATA_BDEV" 2>/dev/null || true)
+  [ -n "$SECTORS" ] || die "could not determine size (sectors) for $DMT_DATA_BDEV (need blockdev)"
 
   NAME=${INTEGRITY_NAME:-integrity}
 
-  TABLE="0 $SECTORS integrity $DATA_DEV 0 $INTEGRITY_TAG_SIZE $INTEGRITY_MODE 2 meta_device:$META_DEV buffer_sectors:$INTEGRITY_BUFFER_SECTORS"
+  TABLE="0 $SECTORS integrity $DMT_DATA_BDEV 0 $INTEGRITY_TAG_SIZE $INTEGRITY_MODE 2 meta_device:$DMT_INTEGRITY_META_BDEV buffer_sectors:$INTEGRITY_BUFFER_SECTORS"
 
   say "[dm-integrity] name=$NAME table=$TABLE"
 
-  if [ "$MODE" = "apply" ]; then
+  if [ "$DMT_MODE" = "apply" ]; then
     dmsetup remove -f "$NAME" >/dev/null 2>&1 || true
     dmsetup create "$NAME" --table "$TABLE"
   fi
@@ -141,14 +146,14 @@ activate_dm_integrity() {
 load_key_into_keyring() {
   need keyctl || die "keyctl not found"
 
-  KEY_DESC=${CRYPT_KEY_DESC:-dm-key}
-  if [ -n "${CRYPT_KEY_HEX:-}" ]; then
-    need xxd || die "xxd required for CRYPT_KEY_HEX"
-    KEYID=$(printf '%s' "$CRYPT_KEY_HEX" | xxd -r -p | keyctl padd user "$KEY_DESC" @s)
-  elif [ -n "${CRYPT_KEY_BIN:-}" ]; then
-    KEYID=$(keyctl padd user "$KEY_DESC" @s < "$CRYPT_KEY_BIN")
+  KEY_DESC=${DMT_CRYPT_KEY_DESC:-${CRYPT_KEY_DESC:-dm-key}}
+  if [ -n "${DMT_CRYPT_KEY_HEX:-${CRYPT_KEY_HEX:-}}" ]; then
+    need xxd || die "xxd required for DMT_CRYPT_KEY_HEX"
+    KEYID=$(printf '%s' "${DMT_CRYPT_KEY_HEX:-$CRYPT_KEY_HEX}" | xxd -r -p | keyctl padd user "$KEY_DESC" @s)
+  elif [ -n "${DMT_CRYPT_KEY_BIN:-${CRYPT_KEY_BIN:-}}" ]; then
+    KEYID=$(keyctl padd user "$KEY_DESC" @s < "${DMT_CRYPT_KEY_BIN:-$CRYPT_KEY_BIN}")
   else
-    die "missing key material: provide CRYPT_KEY_HEX or CRYPT_KEY_BIN"
+    die "missing key material: provide DMT_CRYPT_KEY_HEX or DMT_CRYPT_KEY_BIN"
   fi
 
   export KEYID KEY_DESC
@@ -159,23 +164,23 @@ activate_dm_crypt_plain() {
   : "${CRYPT_KEY_BYTES:?missing CRYPT_KEY_BYTES}"
 
   need dmsetup || {
-    if [ "$MODE" = "apply" ]; then
+    if [ "$DMT_MODE" = "apply" ]; then
       die "dmsetup not found"
     fi
     say "[dm-crypt] dmsetup not found (dry-run: skipping)"
     return 0
   }
 
-  UNDER_DEV=${CRYPT_UNDER_DEV:-${INTEGRITY_DEV:-${DATA_DEV:-}}}
-  [ -n "$UNDER_DEV" ] || die "no underlying device for dm-crypt (set DATA_DEV or activate dm-integrity first)"
+  UNDER_DEV=${DMT_CRYPT_UNDER_BDEV:-${CRYPT_UNDER_DEV:-${INTEGRITY_DEV:-${DMT_DATA_BDEV:-${DATA_DEV:-}}}}}
+  [ -n "$UNDER_DEV" ] || die "no underlying device for dm-crypt (set DMT_DATA_BDEV or activate dm-integrity first)"
 
   SECTORS=$(blockdev --getsz "$UNDER_DEV" 2>/dev/null || true)
   [ -n "$SECTORS" ] || die "could not determine size (sectors) for $UNDER_DEV"
 
-  NAME=${CRYPT_NAME:-crypt}
-  CIPHER=${CRYPT_CIPHER:-capi:cbc(aes)-plain}
-  IV_OFFSET=${CRYPT_IV_OFFSET:-0}
-  SECTOR_SIZE=${CRYPT_SECTOR_SIZE:-512}
+  NAME=${DMT_CRYPT_NAME:-${CRYPT_NAME:-crypt}}
+  CIPHER=${DMT_CRYPT_CIPHER:-${CRYPT_CIPHER:-capi:cbc(aes)-plain}}
+  IV_OFFSET=${DMT_CRYPT_IV_OFFSET:-${CRYPT_IV_OFFSET:-0}}
+  SECTOR_SIZE=${DMT_CRYPT_SECTOR_SIZE:-${CRYPT_SECTOR_SIZE:-512}}
 
   load_key_into_keyring
 
@@ -187,7 +192,7 @@ activate_dm_crypt_plain() {
   TABLE="0 $SECTORS crypt $CIPHER $KEY_FIELD $IV_OFFSET $UNDER_DEV 0 1 sector_size:$SECTOR_SIZE"
   say "[dm-crypt] name=$NAME table=$TABLE"
 
-  if [ "$MODE" = "apply" ]; then
+  if [ "$DMT_MODE" = "apply" ]; then
     dmsetup remove -f "$NAME" >/dev/null 2>&1 || true
     dmsetup create "$NAME" --table "$TABLE"
   fi
@@ -198,7 +203,7 @@ activate_dm_crypt_plain() {
 
 # --- main --------------------------------------------------------------------
 
-say "[apply_manifest] mode=$MODE manifest=$MANIFEST"
+say "[apply_manifest] mode=$DMT_MODE phase=$DMT_PHASE manifest=$MANIFEST"
 
 if [ ! -f "$MANIFEST" ]; then
   die "manifest not found: $MANIFEST"
@@ -220,7 +225,7 @@ say "Stack order: $STACK_ORDER"
 
 # STACK_ORDER is a comma-separated list of layer types, bottom->top.
 # Supported: raw,dm-integrity,dm-crypt
-# raw layer is just DATA_DEV in initramfs.
+# raw layer is just DMT_DATA_BDEV in initramfs.
 
 IFS=','
 for layer in $STACK_ORDER; do
@@ -228,15 +233,15 @@ for layer in $STACK_ORDER; do
     raw)
       # In initramfs, the raw backing is usually a block device.
       # CI artifacts may be used to provision it, but that is outside this script.
-      : "${DATA_DEV:=}"
-      if [ -z "$DATA_DEV" ]; then
-        say "[raw] DATA_DEV not set (ok for dry-run; required for apply)"
+      : "${DMT_DATA_BDEV:=${DATA_DEV:-}}"
+      if [ -z "$DMT_DATA_BDEV" ]; then
+        say "[raw] DMT_DATA_BDEV not set (ok for dry-run; required for apply)"
       else
-        say "[raw] DATA_DEV=$DATA_DEV"
+        say "[raw] DMT_DATA_BDEV=$DMT_DATA_BDEV"
       fi
       ;;
     dm-integrity)
-      # Requires DATA_DEV and META_DEV.
+      # Requires DMT_DATA_BDEV and DMT_INTEGRITY_META_BDEV.
       activate_dm_integrity
       ;;
     dm-crypt)
@@ -262,12 +267,12 @@ fi
 
 default_mount_cmd() {
   # Default mount command if none provided:
-  # mount -t <fstype?> -o <opts> <final_dev> <newroot>
+  # mount -t <fstype?> -o <opts> <final_dev> <mountpoint>
   # In dry-run mode we may not have created mappings; guess the expected /dev/mapper path.
   if [ -z "$FINAL_DEV" ]; then
-    if [ "$MODE" != "apply" ]; then
+    if [ "$DMT_MODE" != "apply" ]; then
       if echo ",$STACK_ORDER," | grep -q ",dm-crypt,"; then
-        FINAL_DEV="/dev/mapper/${CRYPT_NAME:-crypt}"
+        FINAL_DEV="/dev/mapper/${DMT_CRYPT_NAME:-${CRYPT_NAME:-crypt}}"
       elif echo ",$STACK_ORDER," | grep -q ",dm-integrity,"; then
         FINAL_DEV="/dev/mapper/${INTEGRITY_NAME:-integrity}"
       elif echo ",$STACK_ORDER," | grep -q ",dm-verity,"; then
@@ -277,30 +282,30 @@ default_mount_cmd() {
   fi
   [ -n "$FINAL_DEV" ] || die "no final mapped device to mount"
   cmd="mount"
-  if [ -n "$MOUNT_FSTYPE" ]; then
-    cmd="$cmd -t $MOUNT_FSTYPE"
+  if [ -n "$DMT_ROOTFS_FSTYPE" ]; then
+    cmd="$cmd -t $DMT_ROOTFS_FSTYPE"
   fi
-  cmd="$cmd -o $MOUNT_OPTS $FINAL_DEV $NEWROOT"
+  cmd="$cmd -o $MOUNT_OPTS $FINAL_DEV $DMT_ROOTFS_MOUNTPOINT"
   printf '%s' "$cmd"
 }
 
-if [ -n "$MOUNT_CMD" ]; then
-  EFFECTIVE_MOUNT_CMD=$MOUNT_CMD
+if [ -n "$DMT_MOUNT_CMD" ]; then
+  EFFECTIVE_MOUNT_CMD=$DMT_MOUNT_CMD
 else
   EFFECTIVE_MOUNT_CMD=$(default_mount_cmd)
 fi
 
-if [ "$PHASE" = "sealed" ]; then
+if [ "$DMT_PHASE" = "sealed" ]; then
   say "[sealed] executing mount command"
-  if [ "$MODE" = "apply" ]; then
-    sh -c "$EFFECTIVE_MOUNT_CMD" || fail_action "$FAIL_ACTION" "mount command failed"
+  if [ "$DMT_MODE" = "apply" ]; then
+    sh -c "$EFFECTIVE_MOUNT_CMD" || fail_action "$DMT_FAIL_ACTION" "mount command failed"
   else
     say "[sealed] dry-run: would run: $EFFECTIVE_MOUNT_CMD"
   fi
 else
   # bootstrap
   say "[bootstrap] executing mount command"
-  if [ "$MODE" = "apply" ]; then
+  if [ "$DMT_MODE" = "apply" ]; then
     sh -c "$EFFECTIVE_MOUNT_CMD" || die "mount command failed (bootstrap)"
   else
     say "[bootstrap] dry-run: would run: $EFFECTIVE_MOUNT_CMD"

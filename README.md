@@ -53,26 +53,24 @@ On the embedded target you typically have real block devices (no loop), and you 
 
 `initramfs/apply_manifest.sh` is **POSIX `/bin/sh`** and is designed to run in an **initramfs**.
 
-Bootstrap is the default phase (`DMTOOLS_PHASE=bootstrap`).
+Bootstrap is the default phase (`DMT_PHASE=bootstrap`).
 
 Minimal *complete* bootstrap example (crypt-only stack):
 
 ```sh
 # MUST: tell the script which real block device backs the stack
-export DATA_DEV=/dev/<your-data-blockdev>
+export DMT_DATA_BDEV=/dev/<your-data-blockdev>
 
-# MUST: provide key material (one of these)
-export CRYPT_KEY_HEX=<hex-key>
-# export CRYPT_KEY_BIN=/path/key.bin
+export DMT_CRYPT_KEY_HEX=<hex-key>
+# export DMT_CRYPT_KEY_BIN=/path/key.bin
 
-# MUST: run in apply mode
-MODE=apply initramfs/apply_manifest.sh out/manifest.env
+DMT_MODE=apply initramfs/apply_manifest.sh out/manifest.env
 ```
 
-If your stack includes dm-integrity, you MUST also provide the metadata device:
+If your stack includes dm-integrity, you also provide the metadata block device:
 
 ```sh
-export META_DEV=/dev/<your-meta-blockdev>
+export DMT_INTEGRITY_META_BDEV=/dev/<your-meta-blockdev>
 ```
 
 ### Step 3 (target initramfs, sealed): fail closed
@@ -82,23 +80,21 @@ Sealed mode is for later boots: failures during mount are treated as fatal.
 Minimal *complete* sealed example (crypt-only stack):
 
 ```sh
-export DMTOOLS_PHASE=sealed
+export DMT_PHASE=sealed
 
-# MUST: backing device
-export DATA_DEV=/dev/<your-data-blockdev>
+export DMT_DATA_BDEV=/dev/<your-data-blockdev>
 
-# MUST: key material
-export CRYPT_KEY_HEX=<hex-key>
-# export CRYPT_KEY_BIN=/path/key.bin
+export DMT_CRYPT_KEY_HEX=<hex-key>
+# export DMT_CRYPT_KEY_BIN=/path/key.bin
 
-MODE=apply initramfs/apply_manifest.sh out/manifest.env
+DMT_MODE=apply initramfs/apply_manifest.sh out/manifest.env
 ```
 
 Notes:
 
-- Mounting is attempted automatically using `rootfs.*` values stored in the manifest (recommended). If you did not set them in CI, you can still override with `DMTOOLS_MOUNT_CMD=...`.
-- If your stack includes dm-integrity, you MUST provide `META_DEV=/dev/<your-meta-blockdev>`.
-- Optional fatal behavior override: `DMTOOLS_FAIL_ACTION=panic|reboot|shell|exit` (default: `panic`).
+- Mounting is attempted automatically using `rootfs.*` values stored in the manifest (recommended). If you did not set them in CI, you can still override with `DMT_MOUNT_CMD=...`.
+- If your stack includes dm-integrity, you must provide `DMT_INTEGRITY_META_BDEV=/dev/<your-meta-blockdev>`.
+- Optional fatal behavior override: `DMT_FAIL_ACTION=panic|reboot|shell|exit` (default: `panic`).
 
 ---
 
